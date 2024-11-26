@@ -47,6 +47,7 @@ architecture Behavioral of symb_det is
     constant SAMPLE_RATE : integer := 96000;  -- 96kHz
     constant SYMBOL_PERIOD : integer := 6000;  -- 96kHz/16Hz = 6000 samples per symbol
     constant THRESHOLD : integer := 100;       -- Threshold for signal detection
+    constant OFFSET_BINARY : integer := 2048; -- 1000_0000_0000 in decimal for 12-bit ADC
     
     -- Types
     type state_type is (IDLE, COUNTING, OUTPUT_SYMBOL);
@@ -60,7 +61,15 @@ architecture Behavioral of symb_det is
     signal last_cross : integer range 0 to SYMBOL_PERIOD := 0;
     signal period_sum : integer range 0 to SYMBOL_PERIOD * 10 := 0;
     signal period_count : integer range 0 to 100 := 0;
-    
+    signal moving_avg : signed(11 downto 0) := (others => '0'); -- Moving average
+
+    -- Moving Average Parameters
+    constant AVG_WINDOW_SIZE : integer := 16; -- Moving average window size
+    type avg_buffer_type is array (0 to AVG_WINDOW_SIZE-1) of signed(11 downto 0);
+    signal avg_buffer : avg_buffer_type := (others => (others => '0'));
+    signal avg_index : integer range 0 to AVG_WINDOW_SIZE-1 := 0;
+    signal avg_sum : signed(15 downto 0) := (others => '0'); -- Sum for moving average
+
     -- Function to map frequency to symbol
     function get_symbol(avg_period: integer) return std_logic_vector is
     begin
@@ -91,6 +100,7 @@ architecture Behavioral of symb_det is
 begin
     process(clk, clr)
         variable avg_period : integer := 0;
+        variable avg_count : integer := 0;
     begin
         if clr = '1' then
             state <= IDLE;
@@ -103,15 +113,24 @@ begin
             last_cross <= 0;
             period_sum <= 0;
             period_count <= 0;
-            
+            avg_sum <= (others => '0');
+            avg_index <= 0;
+            avg_buffer <= (others => (others => '0'));
         elsif rising_edge(clk) then
-            curr_sample <= signed(adc_data);
+            -- Convert ADC data from offset binary to signed
+            curr_sample <= signed(adc_data) - OFFSET_BINARY;
+            
+            -- Update moving average
+            avg_sum <= avg_sum - avg_buffer(avg_index) + curr_sample;
+            avg_buffer(avg_index) <= curr_sample;
+            avg_index <= (avg_index + 1) mod AVG_WINDOW_SIZE;
+            moving_avg <= resize(avg_sum / AVG_WINDOW_SIZE, 12);
             
             case state is
                 when IDLE =>
                     symbol_valid <= '0';
                     symbol_out <= "000";
-                    if abs(signed(adc_data)) > THRESHOLD then
+                    if abs(moving_avg) > THRESHOLD then
                         state <= COUNTING;
                         sample_count <= 0;
                         zero_cross_count <= 0;
