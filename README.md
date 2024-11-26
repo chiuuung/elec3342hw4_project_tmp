@@ -68,5 +68,3 @@ References
 *   [Digilent PMOD MIC 3](https://digilent.com/reference/_media/reference/pmod/pmodmic3/pmodmic3_rm.pdf)
 *   [ADCS7476](https://www.ti.com/lit/ds/symlink/adcs7476.pdf)
 *   [Setting up Vivado to use VHDL-2008 if you need](https://docs.xilinx.com/r/en-US/ug901-vivado-synthesis/Setting-up-Vivado-to-use-VHDL-2008)
-
-new
