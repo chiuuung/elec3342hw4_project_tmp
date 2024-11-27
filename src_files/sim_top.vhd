@@ -37,7 +37,15 @@ entity sim_top is
         clr         : in STD_LOGIC; -- input synchronized reset
         adc_data    : in STD_LOGIC_VECTOR(11 DOWNTO 0);
         sout        : out STD_LOGIC;
-        led_busy    : out STD_LOGIC
+        led_busy    : out STD_LOGIC;
+        -- debug
+        symbol_valid_debug : out STD_LOGIC;
+        symbol_out_debug : out STD_LOGIC_VECTOR(2 downto 0);
+        downcount_out: out integer;
+        mucodec_valid_debug : out STD_LOGIC;
+        mucodec_dout_debug : out STD_LOGIC_VECTOR(7 downto 0);
+        filter_out: out STD_LOGIC_VECTOR(11 DOWNTO 0);
+        uart_index_out: out integer
     );
 end sim_top;
 
@@ -47,7 +55,9 @@ architecture Behavioral of sim_top is
                 clr         : in STD_LOGIC; -- input synchronized reset
                 adc_data    : in STD_LOGIC_VECTOR(11 DOWNTO 0); -- input 12-bit ADC data
                 symbol_valid: out STD_LOGIC;
-                symbol_out  : out STD_LOGIC_VECTOR(2 DOWNTO 0) -- output 3-bit detection symbol
+                symbol_out  : out STD_LOGIC_VECTOR(2 DOWNTO 0); -- output 3-bit detection symbol
+                downcount_out: out integer;
+                filter_out: out STD_LOGIC_VECTOR(11 DOWNTO 0)
                 );
     end component symb_det;
     component mcdecoder is
@@ -66,6 +76,7 @@ architecture Behavioral of sim_top is
             busy: out STD_LOGIC;
             wen : in STD_LOGIC;
             sout : out STD_LOGIC;
+            index_out: out integer;
             clr : in STD_LOGIC;
             clk : in STD_LOGIC);
     end component myuart;
@@ -82,8 +93,14 @@ begin
         clr         => clr, 
         adc_data    => adc_data, 
         symbol_valid=> symbol_valid, 
-        symbol_out  => symbol_out
+        symbol_out  => symbol_out,
+        downcount_out => downcount_out,
+        filter_out => filter_out
     );
+    
+    -- debug
+    symbol_valid_debug <= symbol_valid;
+    symbol_out_debug <= symbol_out;
 
     mcdecoder_inst: mcdecoder port map (
         din     => symbol_out, 
@@ -94,6 +111,10 @@ begin
         dvalid  => dvalid,
         error   => error
     );
+    
+    -- debug
+    mucodec_valid_debug <= dvalid;
+    mucodec_dout_debug <= dout;
 
     myuart_inst: myuart port map (
         din     => dout,
@@ -101,7 +122,8 @@ begin
         wen     => dvalid,
         sout    => sout,
         clr     => clr,
-        clk     => clk
+        clk     => clk,
+        index_out => uart_index_out
     );
 
 end Behavioral;

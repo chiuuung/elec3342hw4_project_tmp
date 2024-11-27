@@ -44,31 +44,6 @@ entity sys_top is
 end sys_top;
 
 architecture Behavioral of sys_top is
-    component fifo_generator_0 is
-        Port (
-            clk : in STD_LOGIC;
-            rst : in STD_LOGIC;
-            din : in STD_LOGIC_VECTOR(7 DOWNTO 0);
-            wr_en : in STD_LOGIC;
-            rd_en : in STD_LOGIC;
-            dout : out STD_LOGIC_VECTOR(7 DOWNTO 0);
-            empty : out STD_LOGIC;
-            full : out STD_LOGIC
-        );
-    end component fifo_generator_0;
-
-    component dpop is
-        Port (
-            clk : in STD_LOGIC;
-            clr : in STD_LOGIC;
-            fifo_empty : in STD_LOGIC;
-            fifo_data_out : in STD_LOGIC_VECTOR(7 DOWNTO 0);
-            uart_ready : in STD_LOGIC;
-            fifo_pop : out STD_LOGIC;
-            uart_data_in : out STD_LOGIC_VECTOR(7 DOWNTO 0);
-            uart_tx_enable : out STD_LOGIC
-        );
-    end component dpop;
     component adccntrl is
         Port (  csn : out STD_LOGIC;
                 sclk : out STD_LOGIC;
@@ -129,15 +104,6 @@ architecture Behavioral of sys_top is
     signal dvalid           : STD_LOGIC;
     signal error            : STD_LOGIC;
     signal adc_data         : STD_LOGIC_VECTOR(11 DOWNTO 0);
-
-    -- New FIFO and dpop signals
-    signal fifo_wr_en       : STD_LOGIC;
-    signal fifo_rd_en       : STD_LOGIC;
-    signal fifo_empty       : STD_LOGIC;
-    signal fifo_full        : STD_LOGIC;
-    signal fifo_data_out    : STD_LOGIC_VECTOR(7 DOWNTO 0);
-    signal dpop_uart_data   : STD_LOGIC_VECTOR(7 DOWNTO 0);
-    signal dpop_uart_tx_en  : STD_LOGIC;
 begin
 
     -- if it works, copy to top.vhd
@@ -188,31 +154,6 @@ begin
     );
 
     -- you may need a FIFO here
-    -- FIFO for buffering data from mcdecoder
-    fifo_inst: fifo_generator_0
-        port map (
-            clk => clk,
-            rst => clr,
-            din => dout,
-            wr_en => dvalid,       -- Write to FIFO when mcdecoder data is valid
-            rd_en => fifo_rd_en,   -- Read signal controlled by dpop
-            dout => fifo_data_out,
-            empty => fifo_empty,
-            full => fifo_full
-        );
-
-    -- Data Popper for FIFO to UART connection
-    dpop_inst: dpop
-        port map (
-            clk => clk,
-            clr => clr,
-            fifo_empty => fifo_empty,
-            fifo_data_out => fifo_data_out,
-            uart_ready => not led_busy, -- UART ready when not busy
-            fifo_pop => fifo_rd_en,
-            uart_data_in => dpop_uart_data,
-            uart_tx_enable => dpop_uart_tx_en
-        );
 
     myuart_inst: myuart port map (
         din     => dout,

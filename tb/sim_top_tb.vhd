@@ -45,7 +45,15 @@ architecture Behavioral of sim_top_tb is
             clr         : in STD_LOGIC; -- input synchronized reset
             adc_data    : in STD_LOGIC_VECTOR(11 DOWNTO 0);
             sout        : out STD_LOGIC;
-            led_busy    : out STD_LOGIC
+            led_busy    : out STD_LOGIC;
+            -- debug
+            symbol_valid_debug : out STD_LOGIC;
+            symbol_out_debug : out STD_LOGIC_VECTOR(2 downto 0);
+            downcount_out: out integer;
+            mucodec_valid_debug : out STD_LOGIC;
+            mucodec_dout_debug : out STD_LOGIC_VECTOR(7 downto 0);
+            filter_out: out STD_LOGIC_VECTOR(11 DOWNTO 0);
+            uart_index_out: out integer
         );
     end component sim_top;
 
@@ -61,6 +69,14 @@ architecture Behavioral of sim_top_tb is
     signal sample_cnt   : integer := 0;
     signal sout         : std_logic;
     signal led_busy     : std_logic;
+            -- debug
+    signal symbol_valid_debug : STD_LOGIC;
+    signal symbol_out_debug : STD_LOGIC_VECTOR(2 downto 0);
+    signal mucodec_valid_debug : STD_LOGIC;
+    signal mucodec_dout_debug : STD_LOGIC_VECTOR(7 downto 0);
+    signal downcount_out: integer;
+    signal filter_out: STD_LOGIC_VECTOR(11 DOWNTO 0);
+    signal uart_index_out: integer;
 
     -- sine wave signal
     type wave_array is array (0 to SAMPLE_LEN-1) of std_logic_vector (ADC_WIDTH-1 downto 0);
@@ -72,7 +88,14 @@ begin
         clr         => clr,
         adc_data    => adc_data,
         sout        => sout,
-        led_busy    => led_busy 
+        led_busy    => led_busy,
+        symbol_valid_debug => symbol_valid_debug,
+        symbol_out_debug => symbol_out_debug,
+        mucodec_valid_debug => mucodec_valid_debug,
+        mucodec_dout_debug => mucodec_dout_debug,
+        downcount_out => downcount_out,
+        filter_out => filter_out,
+        uart_index_out=>uart_index_out
     );
 
     proc_init_array: process

@@ -22,7 +22,6 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use ieee.std_logic_unsigned.all;
-use IEEE.NUMERIC_STD.ALL;
 
 -- Uncomment the following library declaration if using
 -- arithmetic functions with Signed or Unsigned values
@@ -38,139 +37,80 @@ entity symb_det is
             clr: in STD_LOGIC; -- input synchronized reset
             adc_data: in STD_LOGIC_VECTOR(11 DOWNTO 0); -- input 12-bit ADC data
             symbol_valid: out STD_LOGIC;
-            symbol_out: out STD_LOGIC_VECTOR(2 DOWNTO 0) -- output 3-bit detection symbol
+            symbol_out: out STD_LOGIC_VECTOR(2 DOWNTO 0); -- output 3-bit detection symbol
+            downcount_out: out integer;
+            filter_out: out STD_LOGIC_VECTOR(11 DOWNTO 0)
             );
 end symb_det;
 
-architecture Behavioral of symb_det is
-    -- Constants
-    constant SAMPLE_RATE : integer := 96000;  -- 96kHz
-    constant SYMBOL_PERIOD : integer := 6000;  -- 96kHz/16Hz = 6000 samples per symbol
-    constant THRESHOLD : integer := 100;       -- Threshold for signal detection
-    constant OFFSET_BINARY : integer := 2048; -- 1000_0000_0000 in decimal for 12-bit ADC
-    
-    -- Types
-    type state_type is (IDLE, COUNTING, OUTPUT_SYMBOL);
-    signal state : state_type;
-    
-    -- Signals
-    signal sample_count : integer range 0 to SYMBOL_PERIOD := 0;
-    signal zero_cross_count : integer range 0 to 1000 := 0;
-    signal prev_sample : signed(11 downto 0) := (others => '0');
-    signal curr_sample : signed(11 downto 0) := (others => '0');
-    signal last_cross : integer range 0 to SYMBOL_PERIOD := 0;
-    signal period_sum : integer range 0 to SYMBOL_PERIOD * 10 := 0;
-    signal period_count : integer range 0 to 100 := 0;
-    signal moving_avg : signed(11 downto 0) := (others => '0'); -- Moving average
+architecture Behavioral of symb_det is    
+    type frequency_list is array(0 to 7) of integer;  
+    constant symbol_chart: frequency_list := (131, 110, 87, 73, 62, 49, 41, 33);
 
-    -- Moving Average Parameters
-    constant AVG_WINDOW_SIZE : integer := 16; -- Moving average window size
-    type avg_buffer_type is array (0 to AVG_WINDOW_SIZE-1) of signed(11 downto 0);
-    signal avg_buffer : avg_buffer_type := (others => (others => '0'));
-    signal avg_index : integer range 0 to AVG_WINDOW_SIZE-1 := 0;
-    signal avg_sum : signed(15 downto 0) := (others => '0'); -- Sum for moving average
-
-    -- Function to map frequency to symbol
-    function get_symbol(avg_period: integer) return std_logic_vector is
-    begin
-        case avg_period is
-            when 0 =>
-                return "000";
-            when 42 to 50 =>
-                return "000";  -- Symbol 0
-            when 51 to 58 =>
-                return "001";  -- Symbol 1
-            when 59 to 74 =>
-                return "010";  -- Symbol 2
-            when 75 to 87 =>
-                return "011";  -- Symbol 3
-            when 88 to 101 =>
-                return "100";  -- Symbol 4
-            when 102 to 125 =>
-                return "101";  -- Symbol 5
-            when 126 to 147 =>
-                return "110";  -- Symbol 6
-            when 148 to 183 =>
-                return "111";  -- Symbol 7
-            when others =>
-                return "000";  -- Default case
-        end case;
-    end function;
-
+    -- moving average filter
+    constant N : integer := 5; -- Size of the moving average filter
+    type data_array is array (0 to N-1) of STD_LOGIC_VECTOR(11 DOWNTO 0);
+    signal data_buffer : data_array := (others => (others => '0'));
+    signal sum : integer := 0;
+    signal average : integer := 0;
+    -- end
 begin
     process(clk, clr)
-        variable avg_period : integer := 0;
-        variable avg_count : integer := 0;
+        variable i: integer := 0;
+        variable line_counter: INTEGER := 0; -- Line counter
+        variable detected_symbol: integer:= 0; -- Detected symbol
+        variable previous_data: STD_LOGIC_VECTOR(11 DOWNTO 0);
+        variable current_data: STD_LOGIC_VECTOR(11 DOWNTO 0);
+        variable downcount : integer := 0; 
     begin
         if clr = '1' then
-            state <= IDLE;
-            symbol_valid <= '0';
-            symbol_out <= "000";
-            sample_count <= 0;
-            zero_cross_count <= 0;
-            prev_sample <= (others => '0');
-            curr_sample <= (others => '0');
-            last_cross <= 0;
-            period_sum <= 0;
-            period_count <= 0;
-            avg_sum <= (others => '0');
-            avg_index <= 0;
-            avg_buffer <= (others => (others => '0'));
+            symbol_valid <='0';
+            line_counter := 0;
+            detected_symbol := 0; 
+            symbol_out <= "000"; 
+            previous_data := "000000000000";
+            downcount := 0;
+
+            -- moving average filter
+            data_buffer <= (others => (others => '0'));
+            sum <= 0;
+            average <= 0;
+            -- end
         elsif rising_edge(clk) then
-            -- Convert ADC data from offset binary to signed
-            curr_sample <= signed(adc_data) - OFFSET_BINARY;
-            
-            -- Update moving average
-            avg_sum <= avg_sum - avg_buffer(avg_index) + curr_sample;
-            avg_buffer(avg_index) <= curr_sample;
-            avg_index <= (avg_index + 1) mod AVG_WINDOW_SIZE;
-            moving_avg <= resize(avg_sum / AVG_WINDOW_SIZE, 12);
-            
-            case state is
-                when IDLE =>
-                    symbol_valid <= '0';
-                    symbol_out <= "000";
-                    if abs(moving_avg) > THRESHOLD then
-                        state <= COUNTING;
-                        sample_count <= 0;
-                        zero_cross_count <= 0;
-                        last_cross <= 0;
-                        period_sum <= 0;
-                        period_count <= 0;
+            symbol_valid <='0';
+            current_data := adc_data;
+
+            -- moving average filter
+            sum <= sum - to_integer(unsigned(data_buffer(0))) + to_integer(unsigned(current_data)); -- Subtract the oldest data point and add the new one
+            for i in 0 to N-2 loop
+                data_buffer(i) <= data_buffer(i+1); -- Shift the data points
+            end loop;
+            data_buffer(N-1) <= current_data; -- Add the new data point to the buffer
+            average <= sum / N; -- Calculate the moving average
+            current_data := std_logic_vector(to_unsigned(average, 12)); -- Use the moving average as the input to the symbol detector
+            filter_out <= current_data;
+            -- end
+
+            if (line_counter < 5999) then
+                line_counter := line_counter + 1;                        
+                if (previous_data >= "011111111111" ) and (current_data < "011111111111") then
+                    downcount := downcount + 1;
+                    downcount_out <= downcount;
+                end if;                
+                previous_data := current_data;
+            else -- 6000 lines counted           
+                i := 0;
+                for i in 0 to 7 loop -- find the range of the symbol
+                    if (downcount > symbol_chart(i) - 4) and (downcount < symbol_chart(i) + 4) then
+                        detected_symbol := i;
+                        symbol_out <= std_logic_vector(to_unsigned(detected_symbol, 3));
+                        symbol_valid <='1';
+                        exit;
                     end if;
-                    
-                when COUNTING =>
-                    if sample_count < SYMBOL_PERIOD-1 then
-                        sample_count <= sample_count + 1;
-                        
-                        -- Zero crossing detection (positive going) with hysteresis
-                        if (prev_sample < -THRESHOLD and curr_sample >= THRESHOLD) then
-                            zero_cross_count <= zero_cross_count + 1;
-                            if last_cross /= 0 and period_count < 50 then
-                                period_sum <= period_sum + (sample_count - last_cross);
-                                period_count <= period_count + 1;
-                            end if;
-                            last_cross <= sample_count;
-                        end if;
-                        
-                    else
-                        state <= OUTPUT_SYMBOL;
-                    end if;
-                    
-                when OUTPUT_SYMBOL =>
-                    if period_count >= 10 then  -- Minimum number of measurements
-                        avg_period := period_sum / period_count;
-                        symbol_out <= get_symbol(avg_period);
-                    else
-                        symbol_out <= "000";  -- Invalid measurement
-                    end if;
-                    symbol_valid <= '1';
-                    state <= IDLE;
-                    
-            end case;
-            
-            prev_sample <= curr_sample;
+                end loop;             
+                downcount := 0;
+                line_counter := 0;
+            end if;           
         end if;
     end process;
-    
 end Behavioral;
